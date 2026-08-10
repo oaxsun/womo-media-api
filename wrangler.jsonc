@@ -3,6 +3,12 @@
   "name": "womo-media-api",
   "main": "src/index.js",
   "compatibility_date": "2026-08-10",
-  "workers_dev": true,
-  "preview_urls": false
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "womo-media",
+      "database_id": "0c255d3e-b272-47d1-aff7-61c8e04553e3"
+    }
+  ]
 }
