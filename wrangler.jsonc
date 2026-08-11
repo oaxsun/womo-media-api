@@ -2,8 +2,9 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "womo-media-api",
   "main": "src/index.js",
-  "compatibility_date": "2026-08-10",
-
+  "compatibility_date": "2026-08-11",
+  "workers_dev": true,
+  "preview_urls": false,
   "d1_databases": [
     {
       "binding": "DB",

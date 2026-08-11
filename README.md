@@ -1,53 +1,30 @@
-# WOMO Media API v1
+# WOMO Media API v2 - Cloudflare media bridge trial
 
-Cloudflare Worker para registrar y recuperar claves AES de WMO usando D1.
+This version keeps the existing `/register` and `/playback` routes and adds `/media` so Womo can stream `.wmo` byte ranges from Archive.org without GoDaddy/cPanel.
 
-## Bindings requeridos en Cloudflare
+## Existing Cloudflare configuration
 
-- `DB` -> D1 database `womo-media`
-- `REGISTER_TOKEN` -> Secret
-- `FIREBASE_API_KEY` -> Secret
+Required bindings/secrets:
 
-## Tabla D1
+- D1 binding: `DB` -> `womo-media`
+- Secret: `REGISTER_TOKEN`
+- Secret: `FIREBASE_API_KEY`
 
-```sql
-CREATE TABLE media_keys (
-  content_id TEXT PRIMARY KEY,
-  media_key TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-```
+Optional but recommended later:
 
-## Endpoints
+- Secret: `MEDIA_TOKEN_SECRET` - a long random secret dedicated to short-lived media session tokens. If it is not configured, v2 temporarily falls back to `REGISTER_TOKEN`, so you can run the trial without changing Cloudflare settings.
 
-### GET /health
-Comprueba el estado del Worker y la conexión a D1.
+## Routes
 
-### POST /register
-Header:
-`Authorization: Bearer <REGISTER_TOKEN>`
+- `POST /register` - Encoder key registration
+- `POST /playback` - Firebase-authenticated AES key retrieval; also returns a 2-hour `mediaToken`
+- `POST /media` - authenticated byte-range bridge to `archive.org` `.wmo` files
+- `GET /health`
 
-Body:
-```json
-{
-  "contentId": "uuid",
-  "key": "AES-256-key-base64"
-}
-```
+`/media` only accepts HTTPS Archive.org hosts and `.wmo` paths. It requires a valid Womo media token or Firebase ID token and only accepts explicit byte ranges.
 
-### POST /playback
-Header:
-`Authorization: Bearer <FIREBASE_ID_TOKEN>`
+## Deploy
 
-Body:
-```json
-{
-  "contentId": "uuid"
-}
-```
+Replace the files in the existing private `womo-media-api` GitHub repo and push to `main`. Cloudflare should deploy with the current Git integration.
 
-Valida el ID Token usando Firebase Auth REST y devuelve la key correspondiente desde D1.
-
-## Nota
-
-Las claves no se guardan en GitHub. `REGISTER_TOKEN` y `FIREBASE_API_KEY` deben permanecer como Secrets del Worker.
+The included `wrangler.jsonc` retains the existing D1 binding.
