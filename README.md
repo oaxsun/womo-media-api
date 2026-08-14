@@ -28,3 +28,7 @@ Optional but recommended later:
 Replace the files in the existing private `womo-media-api` GitHub repo and push to `main`. Cloudflare should deploy with the current Git integration.
 
 The included `wrangler.jsonc` retains the existing D1 binding.
+
+
+## Media health
+`POST /check-media` valida Firebase Auth y comprueba una URL remota mediante HEAD o GET Range mínimo. Se usa desde Womo Panel para detectar enlaces caídos sin descargar el contenido completo.

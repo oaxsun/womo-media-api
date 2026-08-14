@@ -165,6 +165,105 @@ async function fetchArchiveRange(source, start, end) {
   throw new Error('too_many_redirects');
 }
 
+
+function isPrivateOrUnsafeHost(hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!host) return true;
+  if (host === 'localhost' || host.endsWith('.localhost') || host === 'metadata.google.internal') return true;
+  if (host === '169.254.169.254') return true;
+  if (host === '::1' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) return true;
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!m) return false;
+  const a = Number(m[1]), b = Number(m[2]);
+  if (a === 10 || a === 127 || a === 0) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+}
+
+function isSafeHealthUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+    if (isPrivateOrUnsafeHost(url.hostname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function checkRemoteMediaUrl(source) {
+  let current = source;
+  const started = Date.now();
+  for (let redirects = 0; redirects <= 5; redirects++) {
+    if (!isSafeHealthUrl(current)) throw new Error('unsafe_or_unsupported_url');
+    let response;
+    let method = 'HEAD';
+    try {
+      response = await fetch(current, { method: 'HEAD', redirect: 'manual', signal: AbortSignal.timeout(10000) });
+    } catch (error) {
+      throw new Error(error?.name === 'TimeoutError' ? 'timeout' : 'network_error');
+    }
+
+    if ([301,302,303,307,308].includes(response.status)) {
+      const location = response.headers.get('Location');
+      if (!location) throw new Error('invalid_redirect');
+      current = new URL(location, current).toString();
+      continue;
+    }
+
+    if ([403,405,501].includes(response.status)) {
+      method = 'GET_RANGE';
+      try {
+        response = await fetch(current, {
+          method: 'GET', redirect: 'manual',
+          headers: { Range: 'bytes=0-0', Accept: '*/*' },
+          signal: AbortSignal.timeout(10000)
+        });
+      } catch (error) {
+        throw new Error(error?.name === 'TimeoutError' ? 'timeout' : 'network_error');
+      }
+      if ([301,302,303,307,308].includes(response.status)) {
+        const location = response.headers.get('Location');
+        if (!location) throw new Error('invalid_redirect');
+        current = new URL(location, current).toString();
+        continue;
+      }
+    }
+
+    const status = response.status;
+    const ok = status >= 200 && status < 400;
+    const contentType = response.headers.get('Content-Type') || '';
+    try { if (response.body) await response.body.cancel(); } catch {}
+    return { ok, status, method, finalUrl: current, contentType, responseTimeMs: Date.now() - started };
+  }
+  throw new Error('too_many_redirects');
+}
+
+async function handleCheckMedia(request, env) {
+  const firebaseToken = getBearerToken(request);
+  if (!firebaseToken) return json({ ok: false, error: 'missing_auth_token' }, 401);
+  if (!env.FIREBASE_API_KEY) return json({ ok: false, error: 'firebase_config_missing' }, 500);
+  const user = await verifyFirebaseIdToken(firebaseToken, env.FIREBASE_API_KEY);
+  if (!user) return json({ ok: false, error: 'invalid_auth_token' }, 401);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const source = String(body?.url || '').trim();
+  if (!source) return json({ ok: false, error: 'missing_url' }, 400);
+  if (!isSafeHealthUrl(source)) return json({ ok: false, error: 'unsafe_or_unsupported_url' }, 400);
+
+  try {
+    const result = await checkRemoteMediaUrl(source);
+    if (!result.ok) return json({ ...result, error: `http_${result.status}` }, 502);
+    return json({ ...result, uid: user.uid });
+  } catch (error) {
+    return json({ ok: false, error: String(error?.message || error || 'check_failed') }, 502);
+  }
+}
+
 async function handleRegister(request, env) {
   const token = getBearerToken(request);
   if (!token) return json({ ok: false, error: 'missing_authorization' }, 401);
@@ -282,7 +381,7 @@ export default {
 
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/') {
-      return json({ ok: true, service: 'womo-media-api', version: 2, mediaBridge: 'cloudflare' });
+      return json({ ok: true, service: 'womo-media-api', version: 3, mediaBridge: 'cloudflare', mediaHealth: true });
     }
     if (request.method === 'GET' && url.pathname === '/health') {
       try {
@@ -295,6 +394,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/register') return handleRegister(request, env);
     if (request.method === 'POST' && url.pathname === '/playback') return handlePlayback(request, env);
     if (request.method === 'POST' && url.pathname === '/media') return handleMedia(request, env);
+    if (request.method === 'POST' && url.pathname === '/check-media') return handleCheckMedia(request, env);
     return json({ ok: false, error: 'not_found' }, 404);
   },
 };
