@@ -6,6 +6,9 @@
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
+  "vars": {
+    "ENCODER_ADMIN_UIDS": "3fgLn9OTs4XUTU1NA3rZywHdy8z2"
+  },
   "d1_databases": [
     {
       "binding": "DB",
