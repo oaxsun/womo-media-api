@@ -1,4 +1,4 @@
-# WOMO Media API v2.2 - Firebase register auth
+# WOMO Media API v2.2.1 - Firebase register auth
 
 `/register` now requires a valid Firebase ID Token from an authorized Encoder admin. The Encoder no longer needs the shared `REGISTER_TOKEN`.
 
