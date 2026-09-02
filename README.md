@@ -1,34 +1,23 @@
-# WOMO Media API v2 - Cloudflare media bridge trial
+# WOMO Media API v2.2 - Firebase register auth
 
-This version keeps the existing `/register` and `/playback` routes and adds `/media` so Womo can stream `.wmo` byte ranges from Archive.org without GoDaddy/cPanel.
+`/register` now requires a valid Firebase ID Token from an authorized Encoder admin. The Encoder no longer needs the shared `REGISTER_TOKEN`.
 
-## Existing Cloudflare configuration
-
-Required bindings/secrets:
-
+## Required Cloudflare configuration
 - D1 binding: `DB` -> `womo-media`
-- Secret: `REGISTER_TOKEN`
 - Secret: `FIREBASE_API_KEY`
+- Variable: `ENCODER_ADMIN_UIDS` (comma-separated Firebase UIDs) OR `ENCODER_ADMIN_EMAILS` (comma-separated emails)
 
-Optional but recommended later:
+Optional: a Firebase custom claim `encoderAdmin: true` is also accepted.
 
-- Secret: `MEDIA_TOKEN_SECRET` - a long random secret dedicated to short-lived media session tokens. If it is not configured, v2 temporarily falls back to `REGISTER_TOKEN`, so you can run the trial without changing Cloudflare settings.
+## Existing media-token secret
+Do **not** delete `REGISTER_TOKEN` yet if your current `/playback` still uses it as the fallback media signing secret. Prefer creating a dedicated `MEDIA_TOKEN_SECRET`; after that, `REGISTER_TOKEN` can be removed entirely. It is no longer accepted by `/register`.
 
 ## Routes
-
-- `POST /register` - Encoder key registration
-- `POST /playback` - Firebase-authenticated AES key retrieval; also returns a 2-hour `mediaToken`
-- `POST /media` - authenticated byte-range bridge to `archive.org` `.wmo` files
+- `POST /register` - Firebase-authenticated admin registration
+- `POST /playback` - Firebase-authenticated AES key retrieval
+- `POST /media` - byte-range bridge
+- `POST /check-media` - media health
 - `GET /health`
 
-`/media` only accepts HTTPS Archive.org hosts and `.wmo` paths. It requires a valid Womo media token or Firebase ID token and only accepts explicit byte ranges.
-
 ## Deploy
-
-Replace the files in the existing private `womo-media-api` GitHub repo and push to `main`. Cloudflare should deploy with the current Git integration.
-
-The included `wrangler.jsonc` retains the existing D1 binding.
-
-
-## Media health
-`POST /check-media` valida Firebase Auth y comprueba una URL remota mediante HEAD o GET Range mínimo. Se usa desde Womo Panel para detectar enlaces caídos sin descargar el contenido completo.
+Replace the files in the private `womo-media-api` repository and push to `main`. Keep the existing D1 binding. Add one admin allowlist variable in Cloudflare before testing `/register`.

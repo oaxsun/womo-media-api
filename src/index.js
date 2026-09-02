@@ -114,7 +114,9 @@ async function verifyFirebaseIdToken(idToken, apiKey) {
   const data = await response.json();
   const user = data?.users?.[0];
   if (!user?.localId) return null;
-  return { uid: user.localId, email: user.email || null };
+  let customClaims = {};
+  try { customClaims = JSON.parse(user.customAttributes || '{}') || {}; } catch {}
+  return { uid: user.localId, email: user.email || null, customClaims };
 }
 
 function isAllowedArchiveUrl(value) {
@@ -264,11 +266,30 @@ async function handleCheckMedia(request, env) {
   }
 }
 
+function parseAllowList(value) {
+  return String(value || '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
+}
+
+function isEncoderAdmin(user, env) {
+  if (user?.customClaims?.encoderAdmin === true) return true;
+  const uids = parseAllowList(env.ENCODER_ADMIN_UIDS);
+  const emails = parseAllowList(env.ENCODER_ADMIN_EMAILS);
+  if (user?.uid && uids.includes(String(user.uid).toLowerCase())) return true;
+  if (user?.email && emails.includes(String(user.email).toLowerCase())) return true;
+  return false;
+}
+
 async function handleRegister(request, env) {
   const token = getBearerToken(request);
-  if (!token) return json({ ok: false, error: 'missing_authorization' }, 401);
-  if (!env.REGISTER_TOKEN || token !== env.REGISTER_TOKEN) {
-    return json({ ok: false, error: 'invalid_authorization' }, 403);
+  if (!token) return json({ ok: false, error: 'missing_auth_token' }, 401);
+  if (!env.FIREBASE_API_KEY) return json({ ok: false, error: 'firebase_config_missing' }, 500);
+  const user = await verifyFirebaseIdToken(token, env.FIREBASE_API_KEY);
+  if (!user) return json({ ok: false, error: 'invalid_auth_token' }, 401);
+  if (!env.ENCODER_ADMIN_UIDS && !env.ENCODER_ADMIN_EMAILS && user?.customClaims?.encoderAdmin !== true) {
+    return json({ ok: false, error: 'encoder_admin_not_configured' }, 403);
+  }
+  if (!isEncoderAdmin(user, env)) {
+    return json({ ok: false, error: 'encoder_admin_required' }, 403);
   }
 
   let body;
@@ -293,7 +314,7 @@ async function handleRegister(request, env) {
     .bind(contentId, key, createdAt)
     .run();
 
-  return json({ ok: true, contentId, registered: true, createdAt });
+  return json({ ok: true, contentId, registered: true, createdAt, uid: user.uid });
 }
 
 async function handlePlayback(request, env) {
@@ -381,7 +402,7 @@ export default {
 
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/') {
-      return json({ ok: true, service: 'womo-media-api', version: 3, mediaBridge: 'cloudflare', mediaHealth: true });
+      return json({ ok: true, service: 'womo-media-api', version: 4, mediaBridge: 'cloudflare', mediaHealth: true, registerAuth: 'firebase' });
     }
     if (request.method === 'GET' && url.pathname === '/health') {
       try {
