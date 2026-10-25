@@ -1,3 +1,5 @@
+import { handleHlsRequest, handleHlsSession } from './hls.js';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
@@ -415,6 +417,8 @@ export default {
     if (request.method === 'POST' && url.pathname === '/register') return handleRegister(request, env);
     if (request.method === 'POST' && url.pathname === '/playback') return handlePlayback(request, env);
     if (request.method === 'POST' && url.pathname === '/media') return handleMedia(request, env);
+    if (request.method === 'POST' && url.pathname === '/hls/session') return handleHlsSession(request, env);
+    if (url.pathname.startsWith('/hls/')) return handleHlsRequest(request, env, url);
     if (request.method === 'POST' && url.pathname === '/check-media') return handleCheckMedia(request, env);
     return json({ ok: false, error: 'not_found' }, 404);
   },
